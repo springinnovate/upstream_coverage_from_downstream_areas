@@ -1,10 +1,23 @@
 """Process upstream catchment areas from given downstream areas."""
 import os
+import logging
+import sys
 
 from ecoshard import geoprocessing
 from ecoshard.geoprocessing import routing
 from ecoshard import taskgraph
 from osgeo import gdal
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    stream=sys.stdout,
+    format=(
+        '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
+        ' [%(funcName)s:%(lineno)d] %(message)s'))
+LOGGER = logging.getLogger(os.path.splitext(os.path.basename(__file__))[0])
+LOGGER.setLevel(logging.DEBUG)
+logging.getLogger('ecoshard.fetch_data').setLevel(logging.INFO)
+
 
 WORKSPACE_DIR = 'workspace'
 INTERMEDIATE_DIR = os.path.join(WORKSPACE_DIR, 'intermediate_dir')
@@ -44,6 +57,7 @@ def main():
     task_graph = taskgraph.TaskGraph(INTERMEDIATE_DIR, len(RASTERS_TO_PROCESS))
     dem_info = geoprocessing.get_raster_info(DEM_RASTER_PATH)
     for raster_path in RASTERS_TO_PROCESS:
+        LOGGER.info(f'processing {raster_path}')
         local_working_dir = os.path.join(
             INTERMEDIATE_DIR,
             os.path.basename(os.path.splitext(raster_path)[0]))
@@ -114,6 +128,7 @@ def main():
 
     task_graph.join()
     task_graph.close()
+    LOGGER.info('all done!')
 
 
 if __name__ == '__main__':
