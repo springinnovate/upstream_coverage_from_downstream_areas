@@ -41,6 +41,7 @@ def _join_masks_op(mask_a, mask_b, a_nodata, b_nodata, target_nodata):
 
 def main():
     """Entry point."""
+    task_graph = taskgraph.TaskGraph(INTERMEDIATE_DIR, len(RASTERS_TO_PROCESS))
     dem_info = geoprocessing.get_raster_info(DEM_RASTER_PATH)
     for raster_path in RASTERS_TO_PROCESS:
         local_working_dir = os.path.join(
@@ -50,40 +51,69 @@ def main():
             local_working_dir, os.path.basename(DEM_RASTER_PATH))
         aligned_raster_path = os.path.join(
             local_working_dir, os.path.basename(raster_path))
-        geoprocessing.align_and_resize_raster_stack(
-            [raster_path, DEM_RASTER_PATH],
-            [aligned_dem_path, aligned_raster_path], ['near', 'near'],
-            dem_info['pixel_size'], 'intersection')
+        align_task = task_graph.add_task(
+            func=geoprocessing.align_and_resize_raster_stack,
+            args=(
+                [raster_path, DEM_RASTER_PATH],
+                [aligned_dem_path, aligned_raster_path], ['near', 'near'],
+                dem_info['pixel_size'], 'intersection'),
+            target_path_list=[aligned_dem_path, aligned_raster_path],
+            task_name=f'align {raster_path}')
         flow_dir_path = os.path.join(local_working_dir, 'flow_dir.tif')
         raster_info = geoprocessing.get_raster_info(raster_path)
-        routing.flow_dir_d8(
-            (aligned_dem_path, 1), flow_dir_path,
-            working_dir=local_working_dir)
+        flow_dir_task = task_graph.add_task(
+            func=routing.flow_dir_d8,
+            args=((aligned_dem_path, 1), flow_dir_path),
+            kwargs={'working_dir': local_working_dir},
+            dependent_task_list=[align_task],
+            target_path_list=[flow_dir_path],
+            task_name=f'flow dir for {flow_dir_path}')
         channel_raster_proxy_path = os.path.join(
             local_working_dir, 'channel_proxy.tif')
-        geoprocessing.raster_calculator(
-            [(channel_raster_proxy_path, 1),
-             (raster_info['nodata'][0], 'raw'),
-             (raster_info['nodata'][0], 'raw'),
-             (MASK_NODATA, 'raw')],
-            _convert_to_mask_op, channel_raster_proxy_path, gdal.GDT_Byte,
-            [MASK_NODATA])
+        channel_proxy_task = task_graph.add_task(
+            func=geoprocessing.raster_calculator,
+            args=(
+                [(aligned_raster_path, 1),
+                 (raster_info['nodata'][0], 'raw'),
+                 (MASK_NODATA, 'raw')],
+                _convert_to_mask_op,
+                channel_raster_proxy_path,
+                gdal.GDT_Byte,
+                [MASK_NODATA]),
+            dependent_task_list=[align_task],
+            target_path_list=[channel_raster_proxy_path],
+            task_name=f'channel proxy {channel_raster_proxy_path}')
         distance_to_channel_path = os.path.join(
             local_working_dir, 'dist_to_channel.tif')
-        routing.distance_to_channel_d8(
-            (flow_dir_path, 1), (channel_raster_proxy_path, 1),
-            distance_to_channel_path)
+        dist_to_channel_task = task_graph.add_task(
+            func=routing.distance_to_channel_d8,
+            args=(
+                (flow_dir_path, 1), (channel_raster_proxy_path, 1),
+                distance_to_channel_path),
+            dependent_task_list=[flow_dir_task, channel_proxy_task],
+            target_path_list=[distance_to_channel_path],
+            task_name=f'dist to channel {distance_to_channel_path}')
         upstream_coverage_raster_path = os.path.join(
             WORKSPACE_DIR,
             f'upstream_coverage_{os.path.basename(raster_path)}')
-        geoprocessing.raster_calculator(
-            [(channel_raster_proxy_path, 1),
-             (distance_to_channel_path, 1),
-             (MASK_NODATA, 'raw'),
-             (-1, 'raw'),  # I know dist to channel nodata is -1
-             (MASK_NODATA, 'raw')],
-            _join_masks_op, upstream_coverage_raster_path,
-            gdal.GDT_Byte, [MASK_NODATA])
+        upstream_coverage_task = task_graph.add_task(
+            func=geoprocessing.raster_calculator,
+            args=(
+                [(channel_raster_proxy_path, 1),
+                 (distance_to_channel_path, 1),
+                 (MASK_NODATA, 'raw'),
+                 (-1, 'raw'),  # I know dist to channel nodata is -1
+                 (MASK_NODATA, 'raw')],
+                _join_masks_op,
+                upstream_coverage_raster_path,
+                gdal.GDT_Byte,
+                [MASK_NODATA]),
+            dependent_task_list=[dist_to_channel_task, channel_proxy_task],
+            target_path_list=[upstream_coverage_raster_path],
+            task_name=f'upstream coverage {upstream_coverage_raster_path}')
+
+    task_graph.join()
+    task_graph.close()
 
 
 if __name__ == '__main__':
