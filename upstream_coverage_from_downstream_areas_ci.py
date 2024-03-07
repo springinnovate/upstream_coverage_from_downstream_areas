@@ -93,7 +93,7 @@ def main():
                 _convert_to_mask_op,
                 channel_raster_proxy_path,
                 gdal.GDT_Byte,
-                [MASK_NODATA]),
+                MASK_NODATA),
             dependent_task_list=[align_task],
             target_path_list=[channel_raster_proxy_path],
             task_name=f'channel proxy {channel_raster_proxy_path}')
@@ -121,7 +121,7 @@ def main():
                 _join_masks_op,
                 upstream_coverage_raster_path,
                 gdal.GDT_Byte,
-                [MASK_NODATA]),
+                MASK_NODATA),
             dependent_task_list=[dist_to_channel_task, channel_proxy_task],
             target_path_list=[upstream_coverage_raster_path],
             task_name=f'upstream coverage {upstream_coverage_raster_path}')
