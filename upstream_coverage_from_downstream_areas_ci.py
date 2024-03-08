@@ -34,7 +34,7 @@ RASTERS_TO_PROCESS = [
     r"D:\repositories\upstream_coverage_from_downstream_areas\data\Water_Stress_RCP85_Total_Vulnerability-001.tif",
 ]
 
-DEM_RASTER_PATH = r"D:\repositories\wwf-sipa\data\aster_dem\aster_dem.vrt"
+DEM_RASTER_PATH = r"D:\repositories\ndr_sdr_global\workspace\data\global_dem_3s_md5_22d0c3809af491fa09d03002bdf09748\dem.vrt"
 
 MASK_NODATA = 2
 
