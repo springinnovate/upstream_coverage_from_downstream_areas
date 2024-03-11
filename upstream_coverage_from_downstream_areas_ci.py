@@ -67,6 +67,7 @@ def main():
         local_working_dir = os.path.join(
             INTERMEDIATE_DIR,
             os.path.basename(os.path.splitext(raster_path)[0]))
+        os.makedirs(local_working_dir, exist_ok=True)
         aligned_dem_path = os.path.join(
             local_working_dir, os.path.basename(DEM_RASTER_PATH))
         aligned_raster_path = os.path.join(
