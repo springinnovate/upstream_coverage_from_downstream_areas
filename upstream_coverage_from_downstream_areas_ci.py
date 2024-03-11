@@ -34,7 +34,7 @@ RASTERS_TO_PROCESS = [
     r"D:\repositories\upstream_coverage_from_downstream_areas\data\Water_Stress_RCP85_Total_Vulnerability-001.tif",
 ]
 
-DEM_RASTER_PATH = r"D:\repositories\ndr_sdr_global\workspace\data\global_dem_3s_md5_22d0c3809af491fa09d03002bdf09748\dem.vrt"
+DEM_RASTER_PATH = r"D:\repositories\upstream_coverage_from_downstream_areas\data\global_dem.tif"
 
 MASK_NODATA = 2
 
@@ -57,6 +57,12 @@ def main():
     task_graph = taskgraph.TaskGraph(INTERMEDIATE_DIR, len(RASTERS_TO_PROCESS))
     dem_info = geoprocessing.get_raster_info(DEM_RASTER_PATH)
     for raster_path in RASTERS_TO_PROCESS:
+        raster_info = geoprocessing.get_raster_info(raster_path)
+
+        local_bounding_box = geoprocessing.merge_bounding_box_list(
+            [raster_info['bounding_box'], dem_info['bounding_box']],
+            'intersection')
+
         LOGGER.info(f'processing {raster_path}')
         local_working_dir = os.path.join(
             INTERMEDIATE_DIR,
@@ -65,21 +71,30 @@ def main():
             local_working_dir, os.path.basename(DEM_RASTER_PATH))
         aligned_raster_path = os.path.join(
             local_working_dir, os.path.basename(raster_path))
-        align_task = task_graph.add_task(
-            func=geoprocessing.align_and_resize_raster_stack,
+
+        align_dem_task = task_graph.add_task(
+            func=geoprocessing.warp_raster,
             args=(
-                [raster_path, DEM_RASTER_PATH],
-                [aligned_dem_path, aligned_raster_path], ['near', 'near'],
-                dem_info['pixel_size'], 'intersection'),
-            target_path_list=[aligned_dem_path, aligned_raster_path],
+                DEM_RASTER_PATH, dem_info['pixel_size'], aligned_dem_path,
+                'near'),
+            kwargs={'target_bb': local_bounding_box},
+            target_path_list=[aligned_dem_path],
+            task_name=f'align {DEM_RASTER_PATH}')
+        align_raster_task = task_graph.add_task(
+            func=geoprocessing.warp_raster,
+            args=(
+                raster_path, dem_info['pixel_size'], aligned_raster_path,
+                'near'),
+            kwargs={'target_bb': local_bounding_box},
+            target_path_list=[aligned_raster_path],
             task_name=f'align {raster_path}')
         flow_dir_path = os.path.join(local_working_dir, 'flow_dir.tif')
         raster_info = geoprocessing.get_raster_info(raster_path)
         flow_dir_task = task_graph.add_task(
-            func=routing.flow_dir_d8,
+            func=routing.flow_dir_mfd,
             args=((aligned_dem_path, 1), flow_dir_path),
             kwargs={'working_dir': local_working_dir},
-            dependent_task_list=[align_task],
+            dependent_task_list=[align_dem_task],
             target_path_list=[flow_dir_path],
             task_name=f'flow dir for {flow_dir_path}')
         channel_raster_proxy_path = os.path.join(
@@ -94,13 +109,13 @@ def main():
                 channel_raster_proxy_path,
                 gdal.GDT_Byte,
                 MASK_NODATA),
-            dependent_task_list=[align_task],
+            dependent_task_list=[align_raster_task],
             target_path_list=[channel_raster_proxy_path],
             task_name=f'channel proxy {channel_raster_proxy_path}')
         distance_to_channel_path = os.path.join(
             local_working_dir, 'dist_to_channel.tif')
         dist_to_channel_task = task_graph.add_task(
-            func=routing.distance_to_channel_d8,
+            func=routing.distance_to_channel_mfd,
             args=(
                 (flow_dir_path, 1), (channel_raster_proxy_path, 1),
                 distance_to_channel_path),
