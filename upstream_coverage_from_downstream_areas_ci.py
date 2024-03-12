@@ -56,6 +56,7 @@ def main():
     """Entry point."""
     task_graph = taskgraph.TaskGraph(INTERMEDIATE_DIR, len(RASTERS_TO_PROCESS))
     dem_info = geoprocessing.get_raster_info(DEM_RASTER_PATH)
+    flood_dir_set = set()  # for debugging
     for raster_path in RASTERS_TO_PROCESS:
         raster_info = geoprocessing.get_raster_info(raster_path)
 
@@ -90,6 +91,8 @@ def main():
             target_path_list=[aligned_raster_path],
             task_name=f'align {raster_path}')
         flow_dir_path = os.path.join(local_working_dir, 'flow_dir.tif')
+        if flood_dir_set in flood_dir_set:
+            raise ValueError(f'{flow_dir_path} has already been scheduled!')
         raster_info = geoprocessing.get_raster_info(raster_path)
         flow_dir_task = task_graph.add_task(
             func=routing.flow_dir_mfd,
